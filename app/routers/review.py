@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
+from sqlalchemy.sql import func
 from sqlalchemy import select, update, insert
 
 from app.backend.db_depends import get_db
-from app.schemas import CreateReview, CreateRating
+from app.schemas import CreateReview, CreateRating, CreateProduct
 from app.models.users import User
 from app.models.products import Product
 from app.models.reviews import Reviews, Ratings
@@ -45,6 +46,10 @@ async def create_reviews_and_ratings(db: Annotated[AsyncSession, Depends(get_db)
         await db.commit()
         grade= await db.execute(select(Ratings).join(User).where(Ratings.is_active == True, Ratings.product_id == product_id, Ratings.user_id == get_user.get('id')))
         await db.execute(insert(Reviews).values(user_id=get_user.get('id'), product_id=product_id, rating=grade.id, comment=create_review.comment))
+        await db.commit()
+        # считаем средний рейтинг
+        avg_grade_product = await db.query(func.avg(Product.rating).label('average')).filter(Product.id==product_id)
+        await db.execute(update(Product).where(Product.id == product_id)).values(rating=avg_grade_product)
         await db.commit()
         return {
             'status_code': status.HTTP_201_CREATED,
